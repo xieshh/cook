@@ -1,10 +1,10 @@
 /* ============================================================
  * 今天吃什么 · 两个人的家常菜
- * 纯前端单页应用：搜索/分类/随机/收藏/做过/买菜清单/食材找菜/自定义/坚果云同步
+ * 纯前端单页应用：搜索/分类/随机/收藏/做过/买菜清单/食材找菜/自定义/GitHub同步
  * ============================================================ */
 
 const STORE_KEY = 'zycp_data_v1';
-const SYNC_FILE = '/dav/zycp/data.json';
+const GIST_FILENAME = 'data.json';
 
 const CATEGORIES = ['全部', '荤菜', '素菜', '凉菜', '汤羹', '主食', '海鲜', '蛋豆制品', '甜品'];
 
@@ -15,7 +15,7 @@ let data = {
   customRecipes: [],    // 自定义菜谱
   grocery: [],          // [{key, name, amount, unit, fromId, bought}]
   theme: 'light',
-  sync: { url: 'https://dav.jianguoyun.com/dav', user: '', pass: '', path: 'zycp/data.json', enabled: false }
+  sync: { token: '', gistId: '', enabled: false }
 };
 
 function loadLocal() {
@@ -353,20 +353,15 @@ function deleteCustom(id) {
   toast('已删除');
 }
 
-/* ---------------- 坚果云同步 ---------------- */
+/* ---------------- GitHub Gist 同步 ---------------- */
 let syncTimer = null;
 function scheduleSync() {
-  if (!data.sync.enabled) return;
+  if (!data.sync.enabled || !data.sync.token) return;
   clearTimeout(syncTimer);
   syncTimer = setTimeout(syncPush, 800);
 }
-function syncAuth() {
-  return 'Basic ' + btoa(unescape(encodeURIComponent(data.sync.user + ':' + data.sync.pass)));
-}
-function syncUrl() {
-  const base = data.sync.url.replace(/\/+$/, '');
-  const path = data.sync.path.replace(/^\/+/, '');
-  return base + '/' + path;
+function syncHeaders() {
+  return { 'Authorization': 'Bearer ' + data.sync.token, 'Accept': 'application/vnd.github+json' };
 }
 function syncPayload() {
   return JSON.stringify({
@@ -376,14 +371,15 @@ function syncPayload() {
     grocery: data.grocery
   });
 }
-function syncPull() {
-  const u = syncUrl();
-  return fetch(u, { method: 'GET', headers: { Authorization: syncAuth() } })
-    .then(res => {
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res.json();
-    });
+async function syncPull() {
+  if (!data.sync.gistId) return null;
+  const res = await fetch('https://api.github.com/gists/' + data.sync.gistId, { headers: syncHeaders() });
+  if (res.status === 404) { data.sync.gistId = ''; saveLocal(); return null; }
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const g = await res.json();
+  const file = g.files && g.files[GIST_FILENAME];
+  if (!file) return null;
+  return JSON.parse(file.content);
 }
 function mergeRemote(remote) {
   if (!remote) return;
@@ -397,29 +393,44 @@ function mergeRemote(remote) {
   (remote.grocery || []).forEach(g => { if (!gseen.has(g.key)) data.grocery.push(g); });
   saveLocal();
 }
-function syncPush() {
-  const u = syncUrl();
-  return fetch(u, {
-    method: 'PUT',
-    headers: { Authorization: syncAuth(), 'Content-Type': 'application/json' },
-    body: syncPayload()
-  }).then(res => {
+async function syncPush() {
+  const body = syncPayload();
+  if (!data.sync.gistId) {
+    const res = await fetch('https://api.github.com/gists', {
+      method: 'POST',
+      headers: syncHeaders(),
+      body: JSON.stringify({ description: '今天吃什么 · 同步数据', public: false, files: { [GIST_FILENAME]: { content: body } } })
+    });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-  });
+    const g = await res.json();
+    data.sync.gistId = g.id;
+    saveLocal();
+  } else {
+    const res = await fetch('https://api.github.com/gists/' + data.sync.gistId, {
+      method: 'PATCH',
+      headers: syncHeaders(),
+      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: body } } })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+  }
 }
 async function syncNow(showMsg) {
-  if (!data.sync.enabled) { if (showMsg) toast('先开启云端同步'); return; }
+  if (!data.sync.token) { if (showMsg) toast('先填写 GitHub 令牌'); return; }
+  data.sync.enabled = true; saveLocal();
   try {
     const remote = await syncPull();
     mergeRemote(remote);
     await syncPush();
     refreshAll();
     if (showMsg) toast('同步成功 ☁️');
-    setSyncStatus('ok', '同步正常 ✓');
+    setSyncStatus('ok', '☁️ 同步正常，数据已存到你的 GitHub');
   } catch (e) {
     console.warn('sync failed', e);
-    if (showMsg) toast('同步失败，稍后重试');
-    setSyncStatus('err', '同步失败：' + (e.message || e) + '（请检查账号/密码/网络）');
+    let msg = e.message || e;
+    if (msg.includes('401')) msg = '令牌无效，请重新生成';
+    else if (msg.includes('403')) msg = '令牌权限不足（需要 gist 权限）或触发频率限制，稍后再试';
+    if (showMsg) toast('同步失败');
+    setSyncStatus('err', '同步失败：' + msg);
   }
 }
 function setSyncStatus(cls, msg) {
@@ -429,34 +440,28 @@ function setSyncStatus(cls, msg) {
 function renderSyncPanel() {
   const s = data.sync;
   $('#syncPanel').innerHTML = `
-    <div class="sync-status ${s.enabled ? 'ok' : ''}" id="syncStatus">${s.enabled ? '☁️ 已开启，数据云端同步中' : '⚙️ 未开启同步（数据仅存本机）'}</div>
+    <div class="sync-status" id="syncStatus">${s.token ? (s.gistId ? '☁️ 已配置，数据自动同步中' : '⚙️ 已配置，首次同步会自动创建存储文件') : '⚙️ 未配置，数据仅存本机'}</div>
     <div class="sync-form">
-      <input id="sUrl" value="${s.url}" placeholder="WebDAV地址（默认坚果云）">
-      <input id="sUser" value="${s.user}" placeholder="坚果云账号（邮箱）">
-      <input id="sPass" type="password" value="${s.pass}" placeholder="应用密码（非登录密码）">
-      <input id="sPath" value="${s.path}" placeholder="文件路径（默认 zycp/data.json）">
+      <input id="sToken" type="password" value="${s.token || ''}" placeholder="GitHub 令牌（仅需 gist 权限）">
     </div>
+    <p class="hint" style="text-align:left;margin:6px 0">令牌获取：GitHub → 头像 → Settings → Developer settings → Personal access tokens → Generate new token（勾选 gist 权限）</p>
     <div class="sync-form" style="display:flex;gap:8px;margin-top:10px">
       <button id="sSave" class="btn-big" style="flex:1">保存并同步</button>
       <button id="sTest" class="btn-big btn-ghost" style="flex:1">立即同步</button>
     </div>`;
-  $('#syncStatus').className = 'sync-status' + (s.enabled ? ' ok' : '');
-  $('#syncStatus').innerHTML = s.enabled ? '☁️ 已开启，数据云端同步中' : '⚙️ 未开启同步（数据仅存本机）';
 }
 function saveSyncForm() {
-  data.sync.url = $('#sUrl').value.trim() || 'https://dav.jianguoyun.com/dav';
-  data.sync.user = $('#sUser').value.trim();
-  data.sync.pass = $('#sPass').value.trim();
-  data.sync.path = $('#sPath').value.trim() || 'zycp/data.json';
-  data.sync.enabled = !!(data.sync.user && data.sync.pass);
-  saveLocal();
-  if (data.sync.enabled) {
-    setSyncStatus('', '☁️ 已开启，正在同步…');
-    syncNow(true);
-  } else {
-    setSyncStatus('', '⚙️ 已关闭同步');
-    toast('已关闭同步');
+  const t = $('#sToken').value.trim();
+  if (!t) {
+    data.sync.token = ''; data.sync.enabled = false; data.sync.gistId = '';
+    saveLocal(); renderSyncPanel(); toast('已关闭同步');
+    return;
   }
+  data.sync.token = t;
+  data.sync.enabled = true;
+  saveLocal();
+  setSyncStatus('', '☁️ 正在同步…');
+  syncNow(true);
 }
 
 /* ---------------- 深色模式 ---------------- */
@@ -579,12 +584,6 @@ function bind() {
     if (id === 'sTest') syncNow(true);
     else if (id === 'sSave') saveSyncForm();
   });
-  $('#syncPanel').addEventListener('change', e => {
-    if (e.target.id === 'sUrl') data.sync.url = e.target.value.trim();
-    if (e.target.id === 'sUser') data.sync.user = e.target.value.trim();
-    if (e.target.id === 'sPass') data.sync.pass = e.target.value.trim();
-    if (e.target.id === 'sPath') data.sync.path = e.target.value.trim();
-  });
 
   $('#exportData').addEventListener('click', exportData);
   $('#importData').addEventListener('click', () => $('#importFile').click());
@@ -605,10 +604,9 @@ function bind() {
 /* ---------------- 启动 ---------------- */
 function init() {
   loadLocal();
-  if (!data.sync.url) data.sync.url = 'https://dav.jianguoyun.com/dav';
   applyTheme();
   refreshAll();
   bind();
-  if (data.sync.enabled) setTimeout(syncNow, 600);
+  if (data.sync.enabled && data.sync.token) setTimeout(syncNow, 600);
 }
 document.addEventListener('DOMContentLoaded', init);
