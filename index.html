@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#ff7043">
+<meta name="description" content="两个人的家常菜谱：100道家常菜做法，支持搜索、随机推荐、买菜清单">
+<title>今天吃什么 · 两个人的家常菜</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo"><span class="logo-icon">🥘</span>今天吃什么</div>
+  <button id="themeBtn" class="icon-btn" title="切换深浅色">🌙</button>
+</header>
+
+<main id="main">
+
+  <!-- ============ 菜谱页 ============ -->
+  <section id="page-recipes" class="page active">
+    <div class="searchbar">
+      <input id="searchInput" type="search" placeholder="搜索菜名、食材、口味…" autocomplete="off">
+    </div>
+    <div class="cat-tabs" id="catTabs"></div>
+    <div class="filters">
+      <select id="filterFlavor"><option value="">口味:全部</option></select>
+      <select id="filterTime"><option value="">耗时:全部</option></select>
+      <select id="filterDiff"><option value="">难度:全部</option></select>
+      <button id="filterReset" class="btn-mini">清空</button>
+    </div>
+    <div id="recipeList" class="card-list"></div>
+    <div id="listEmpty" class="empty hidden">没有找到匹配的菜，换个关键词试试～</div>
+  </section>
+
+  <!-- ============ 今天吃啥 ============ -->
+  <section id="page-random" class="page">
+    <div class="random-actions">
+      <button id="rollOne" class="btn-big">🎲 随机一道菜</button>
+      <button id="rollSet" class="btn-big btn-ghost">🍽️ 搭配一餐（荤+素+汤）</button>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3>🧊 冰箱里有啥做啥</h3>
+      <div class="searchbar">
+        <input id="ingInput" type="text" placeholder="输入家里有的食材，如：鸡蛋、番茄、土豆" autocomplete="off">
+      </div>
+      <button id="ingFindBtn" class="btn-big btn-ghost" style="margin-top:10px">🔍 看看能做啥</button>
+      <p class="hint" style="text-align:left;margin-top:6px">多个食材用逗号分开，命中的菜会优先显示</p>
+    </div>
+    <div id="randomResult"></div>
+  </section>
+
+  <!-- ============ 买菜清单 ============ -->
+  <section id="page-list" class="page">
+    <div class="list-toolbar">
+      <button id="copyList" class="btn-mini">📋 复制清单</button>
+      <button id="clearBought" class="btn-mini">清除已买</button>
+      <span id="groceryHint" class="hint">在菜谱里点「买菜清单」加入</span>
+    </div>
+    <div id="groceryList"></div>
+    <div id="groceryEmpty" class="empty hidden">清单还是空的～去菜谱里挑几道菜吧</div>
+  </section>
+
+  <!-- ============ 我的 ============ -->
+  <section id="page-mine" class="page">
+    <div class="panel">
+      <h3>☁️ 云端同步（坚果云）</h3>
+      <div id="syncPanel"></div>
+      <p class="hint">收藏、做过、历史、自定义菜谱会同步到坚果云，两人共享一份数据。</p>
+    </div>
+    <div class="panel">
+      <h3>👩‍🍳 我的拿手菜</h3>
+      <button id="addRecipeBtn" class="btn-big">＋ 添加我的拿手菜</button>
+      <div id="customList"></div>
+      <div id="customEmpty" class="empty hidden">还没有自定义菜谱</div>
+    </div>
+    <div class="panel">
+      <h3>📅 最近吃过</h3>
+      <div id="historyList"></div>
+      <div id="historyEmpty" class="empty hidden">还没记录，做完菜点「做过」就会记在这里</div>
+    </div>
+    <div class="panel">
+      <h3>💾 数据</h3>
+      <button id="exportData" class="btn-mini">导出数据（JSON）</button>
+      <button id="importData" class="btn-mini">导入数据</button>
+      <input type="file" id="importFile" class="hidden" accept=".json">
+      <button id="resetData" class="btn-mini btn-danger">清空本地数据</button>
+    </div>
+  </section>
+
+</main>
+
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-page="recipes"><span class="nav-icon">🍳</span>菜谱</button>
+  <button class="nav-btn" data-page="random"><span class="nav-icon">🎲</span>吃啥</button>
+  <button class="nav-btn" data-page="list"><span class="nav-icon">🛒</span>清单</button>
+  <button class="nav-btn" data-page="mine"><span class="nav-icon">👤</span>我的</button>
+</nav>
+
+<!-- ============ 菜谱详情 ============ -->
+<div id="detailOverlay" class="overlay hidden">
+  <div class="detail">
+    <button id="detailClose" class="overlay-close">✕</button>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+<!-- ============ 添加菜谱 ============ -->
+<div id="addOverlay" class="overlay hidden">
+  <div class="sheet">
+    <button id="addClose" class="overlay-close">✕</button>
+    <h3>👩‍🍳 添加我的拿手菜</h3>
+    <form id="addForm" autocomplete="off">
+      <label>菜名 <input id="afName" required placeholder="如：我的秘制鸡翅"></label>
+      <label>分类
+        <select id="afCategory">
+          <option>荤菜</option><option>素菜</option><option>凉菜</option><option>汤羹</option>
+          <option>主食</option><option>海鲜</option><option>蛋豆制品</option><option>甜品</option>
+        </select>
+      </label>
+      <label>口味 <input id="afFlavor" placeholder="如：咸鲜 / 麻辣"></label>
+      <label>耗时（分钟） <input id="afTime" type="number" placeholder="30"></label>
+      <label>难度
+        <select id="afDiff"><option value="1">简单</option><option value="2">一般</option><option value="3">稍难</option><option value="4">较难</option><option value="5">挑战</option></select>
+      </label>
+      <label>食材（一行一个，格式：名称 用量单位）<textarea id="afIngredients" rows="4" placeholder="鸡翅 8个&#10;生抽 2勺"></textarea></label>
+      <label>做法步骤（一行一步）<textarea id="afSteps" rows="6" placeholder="第一步…&#10;第二步…"></textarea></label>
+      <label>小贴士（可选）<input id="afTips" placeholder="火候、替换食材等"></label>
+      <button type="submit" class="btn-big">保存</button>
+    </form>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script src="recipes-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
