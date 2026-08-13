@@ -6,7 +6,7 @@
 const STORE_KEY = 'zycp_data_v1';
 const GIST_FILENAME = 'data.json';
 
-const CATEGORIES = ['全部', '荤菜', '素菜', '凉菜', '汤羹', '主食', '海鲜', '蛋豆制品', '甜品'];
+const CATEGORY_ORDER = ['荤菜', '素菜', '蛋豆制品', '汤羹', '凉菜', '主食', '海鲜', '甜品'];
 
 /* ---------------- 本地数据 ---------------- */
 let data = {
@@ -53,9 +53,15 @@ function toast(msg) {
 }
 
 /* ---------------- 分类 / 筛选 ---------------- */
+function getCategories() {
+  const set = new Set();
+  getRecipes().forEach(r => set.add(r.category));
+  return ['全部'].concat(CATEGORY_ORDER.filter(c => set.has(c)))
+    .concat(Array.from(set).filter(c => !CATEGORY_ORDER.includes(c)));
+}
 function renderCats() {
   const el = $('#catTabs');
-  el.innerHTML = CATEGORIES.map(c =>
+  el.innerHTML = getCategories().map(c =>
     `<button class="cat-tab ${c === curCat ? 'active' : ''}" data-cat="${c}">${c}</button>`).join('');
 }
 function fillFilters() {
