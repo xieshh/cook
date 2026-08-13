@@ -93,6 +93,11 @@ function renderList() {
   $('#listEmpty').classList.toggle('hidden', list.length > 0);
   $('#recipeList').innerHTML = list.map(cardHTML).join('');
 }
+const SRC_TAG = { verified: ['📖', '实测做法'], hunan: ['🌶️', '湘菜精选'], home: ['🍚', '家常精选'] };
+function srcTagHTML(r) {
+  const t = SRC_TAG[r.src] || SRC_TAG.home;
+  return `<span class="tag" title="数据来源">${t[0]}${t[1]}</span>`;
+}
 function cardHTML(r) {
   const fav = isFav(r.id);
   return `<div class="recipe-card" data-id="${r.id}">
@@ -103,6 +108,7 @@ function cardHTML(r) {
         <span class="tag">${'★'.repeat(r.difficulty)}${'☆'.repeat(5 - r.difficulty)}</span>
         <span class="tag">⏱ ${r.time}分钟</span>
         ${r.flavor ? `<span class="tag">${r.flavor}</span>` : ''}
+        ${srcTagHTML(r)}
       </div>
     </div>
     <button class="fav-btn ${fav ? 'on' : ''}" data-fav="${r.id}">${fav ? '❤️' : '🤍'}</button>
@@ -134,6 +140,7 @@ function showDetail(id) {
       <span class="tag">⏱ ${r.time}分钟</span>
       ${r.flavor ? `<span class="tag">${r.flavor}</span>` : ''}
       ${r.custom ? '<span class="tag">我的拿手菜</span>' : ''}
+      ${srcTagHTML(r)}
     </div>
     <div class="d-actions">
       <button class="btn-big" id="dFav">${fav ? '❤️ 已收藏' : '🤍 收藏'}</button>
